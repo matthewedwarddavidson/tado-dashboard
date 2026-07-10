@@ -12,3 +12,19 @@ pom.xml.asc
 .lein-failures
 .nrepl-port
 .cpcache/
+.clj-kondo/
+.lsp/
+copilot-instructions.md
+PLAN.md
+
+# Backend
+backend/.cpcache/
+backend/.clj-kondo/
+backend/target/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Stored OAuth refresh token
+backend/.tado-token.edn
