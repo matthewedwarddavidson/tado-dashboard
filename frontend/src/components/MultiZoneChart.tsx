@@ -48,11 +48,28 @@ function heatLevel(value: string | undefined): number | undefined {
 
 type ChartRow = Record<string, string | number | undefined>;
 
+/** Linearly interpolates (or flat-extrapolates) outside temperature at any timestamp. */
+function interpolateOutside(
+  knownPoints: Array<{ ms: number; celsius: number }>,
+  tsMs: number
+): number | undefined {
+  if (knownPoints.length === 0) return undefined;
+  if (knownPoints.length === 1) return knownPoints[0].celsius;
+  const before = [...knownPoints].reverse().find((p) => p.ms <= tsMs);
+  const after  = knownPoints.find((p) => p.ms >= tsMs);
+  if (before && after && before.ms !== after.ms) {
+    const ratio = (tsMs - before.ms) / (after.ms - before.ms);
+    return before.celsius + ratio * (after.celsius - before.celsius);
+  }
+  return (before ?? after)!.celsius; // flat extrapolation at edges
+}
+
 function buildChartData(
   zones: Zone[],
   reports: Record<number, DayReport>,
   from: string,
-  to: string
+  to: string,
+  multiDay: boolean
 ): ChartRow[] {
   const zonesWithData = zones.filter((z) => reports[z.id]);
   if (zonesWithData.length === 0) return [];
@@ -71,7 +88,17 @@ function buildChartData(
     };
   });
 
-  // Collect timestamps, filtered to the [from, to] range
+  // Outside temperature: build sorted list of known points for interpolation
+  const outsidePoints = zonesWithData[0]
+    ? (reports[zonesWithData[0].id]?.weather?.outsideTemperaturePoints ?? [])
+    : [];
+  const outsideKnown = outsidePoints
+    .filter((dp) => dp.value?.celsius != null)
+    .map((dp) => ({ ms: parseISO(dp.timestamp).getTime(), celsius: dp.value.celsius }))
+    .sort((a, b) => a.ms - b.ms);
+
+  // Collect timestamps filtered to the [from, to] range
+  // No need to separately add outside temp timestamps — interpolation covers all points
   const fromMs = new Date(from).getTime();
   const toMs   = new Date(to).getTime();
   const allTimestamps = new Set<string>();
@@ -88,7 +115,8 @@ function buildChartData(
 
   return [...allTimestamps].sort().map((ts) => {
     const row: ChartRow = {
-      time: ts, // keep raw ISO for sorting; formatted in XAxis tickFormatter
+      // Format directly as local time so the x-axis and tooltip are always in sync
+      time: format(parseISO(ts), multiDay ? "dd/MM HH:mm" : "HH:mm"),
     };
 
     for (const { zoneId, tempByTs, humidByTs, settingIntervals, heatIntervals } of zoneMaps) {
@@ -105,19 +133,19 @@ function buildChartData(
       if (hl != null) row[`${zoneId}_heating`] = hl;
     }
 
+    const outside = outsideKnown.length > 0
+      ? interpolateOutside(outsideKnown, parseISO(ts).getTime())
+      : undefined;
+    if (outside != null) row["outside"] = Math.round(outside * 10) / 10;
+
     return row;
   });
 }
 
 export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneColors }: Props) {
   const zonesWithData = zones.filter((z) => reports[z.id]);
-  const data = buildChartData(zonesWithData, reports, from, to);
-
   const multiDay = from.substring(0, 10) !== to.substring(0, 10);
-  const tickFormatter = (ts: string) =>
-    multiDay
-      ? format(parseISO(ts), "dd/MM HH:mm")
-      : format(parseISO(ts), "HH:mm");
+  const data = buildChartData(zonesWithData, reports, from, to, multiDay);
 
   // Show ~12 ticks regardless of data density
   const tickInterval = Math.max(0, Math.floor(data.length / 12) - 1);
@@ -137,7 +165,6 @@ export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneCo
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis
             dataKey="time"
-            tickFormatter={tickFormatter}
             tick={{ fontSize: 11 }}
             interval={tickInterval}
           />
@@ -153,6 +180,20 @@ export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneCo
             }}
           />
           <Legend />
+          {/* Outside temperature — single line, same for the whole home */}
+          {data.some((row) => row["outside"] != null) && (
+            <Line
+              yAxisId="temp"
+              type="monotone"
+              dataKey="outside"
+              name="Outside °C"
+              stroke="#94a3b8"
+              strokeWidth={1.5}
+              strokeDasharray="3 3"
+              dot={false}
+              connectNulls
+            />
+          )}
           {zonesWithData.flatMap((zone) =>
             (Object.entries(SERIES_CONFIG) as [SeriesKey, SeriesConfig][])
               .filter(([key]) => visibleSeries.has(key))

@@ -20,21 +20,21 @@ export function AuthPage({ onAuthenticated }: Props) {
         const data = await api.getAuthStatus();
         if (data.status === "authenticated") {
           clearInterval(id);
-          onAuthenticated();
+          window.location.reload();
         }
       } catch {
         // Keep polling — network blip
       }
     }, 2000);
     return () => clearInterval(id);
-  }, [phase, onAuthenticated]);
+  }, [phase]);
 
   const handleConnect = useCallback(async () => {
     setErrorMsg(null);
     try {
       const data: AuthStatus = await api.startAuth();
       if (data.status === "authenticated") {
-        onAuthenticated();
+        window.location.reload();
       } else if (data.status === "pending" && data.verificationUri) {
         setVerificationUri(data.verificationUri);
         setUserCode(data.userCode ?? null);

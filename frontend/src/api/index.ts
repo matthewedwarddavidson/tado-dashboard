@@ -73,6 +73,12 @@ export interface DayReport {
     dataPoints?: DataPoint<string>[];
     dataIntervals?: DataInterval<string>[];
   };
+  weather?: {
+    // Raw tado structure: time-keyed slots ("04:00", "08:00", etc.)
+    slots?: Record<string, unknown>;
+    // Normalised by mergeDayReports into chartable data points
+    outsideTemperaturePoints?: DataPoint<TemperatureValue>[];
+  };
 }
 
 /** Merges an ordered array of DayReports into a single report for charting. */
@@ -99,6 +105,24 @@ export function mergeDayReports(reports: DayReport[]): DayReport {
     callForHeat: {
       dataIntervals: reports.flatMap((r) => r.callForHeat?.dataIntervals ?? []),
       dataPoints:    reports.flatMap((r) => r.callForHeat?.dataPoints ?? []),
+    },
+    weather: {
+      // Convert time-keyed slots ("04:00" etc.) into chartable data points.
+      // Use interval.to's date so the times land on the correct calendar day.
+      outsideTemperaturePoints: reports.flatMap((r) => {
+        // tado wraps the time-keyed entries in a nested .slots object
+        const slots = (r.weather?.slots as Record<string, unknown> | undefined)?.slots as
+          Record<string, { state?: string; temperature?: TemperatureValue }> | undefined;
+        const date  = r.interval?.to?.substring(0, 10);
+        if (!slots || !date) return [];
+        return Object.entries(slots)
+          .filter(([key]) => /^\d{2}:\d{2}$/.test(key))
+          .flatMap(([time, slot]) =>
+            slot?.temperature
+              ? [{ timestamp: `${date}T${time}:00.000Z`, value: slot.temperature }]
+              : []
+          );
+      }),
     },
   };
 }
