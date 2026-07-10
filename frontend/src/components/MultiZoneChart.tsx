@@ -32,7 +32,8 @@ interface Props {
   zones: Zone[];
   reports: Record<number, DayReport>;
   visibleSeries: Set<SeriesKey>;
-  multiDay?: boolean;
+  from: string;
+  to: string;
   zoneColors: Record<number, string>;
 }
 
@@ -47,7 +48,12 @@ function heatLevel(value: string | undefined): number | undefined {
 
 type ChartRow = Record<string, string | number | undefined>;
 
-function buildChartData(zones: Zone[], reports: Record<number, DayReport>): ChartRow[] {
+function buildChartData(
+  zones: Zone[],
+  reports: Record<number, DayReport>,
+  from: string,
+  to: string
+): ChartRow[] {
   const zonesWithData = zones.filter((z) => reports[z.id]);
   if (zonesWithData.length === 0) return [];
 
@@ -65,11 +71,19 @@ function buildChartData(zones: Zone[], reports: Record<number, DayReport>): Char
     };
   });
 
-  // Collect all unique timestamps from measured data across all zones
+  // Collect timestamps, filtered to the [from, to] range
+  const fromMs = new Date(from).getTime();
+  const toMs   = new Date(to).getTime();
   const allTimestamps = new Set<string>();
   for (const { tempByTs, humidByTs } of zoneMaps) {
-    for (const ts of tempByTs.keys()) allTimestamps.add(ts);
-    for (const ts of humidByTs.keys()) allTimestamps.add(ts);
+    for (const ts of tempByTs.keys()) {
+      const ms = parseISO(ts).getTime();
+      if (ms >= fromMs && ms <= toMs) allTimestamps.add(ts);
+    }
+    for (const ts of humidByTs.keys()) {
+      const ms = parseISO(ts).getTime();
+      if (ms >= fromMs && ms <= toMs) allTimestamps.add(ts);
+    }
   }
 
   return [...allTimestamps].sort().map((ts) => {
@@ -95,10 +109,11 @@ function buildChartData(zones: Zone[], reports: Record<number, DayReport>): Char
   });
 }
 
-export function MultiZoneChart({ zones, reports, visibleSeries, multiDay = false, zoneColors }: Props) {
+export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneColors }: Props) {
   const zonesWithData = zones.filter((z) => reports[z.id]);
-  const data = buildChartData(zonesWithData, reports);
+  const data = buildChartData(zonesWithData, reports, from, to);
 
+  const multiDay = from.substring(0, 10) !== to.substring(0, 10);
   const tickFormatter = (ts: string) =>
     multiDay
       ? format(parseISO(ts), "dd/MM HH:mm")

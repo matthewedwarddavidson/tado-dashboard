@@ -1,16 +1,20 @@
 (ns tado-data-analyser.server
-  "Ring HTTP server with reitit routing, serving the tado API proxy."
-  (:require [reitit.ring :as reitit]
+  "Ring HTTP server with reitit routing, static file serving, and browser-based auth."
+  (:require [clojure.string :as str]
+            [reitit.ring :as reitit]
             [ring.adapter.jetty :as jetty]
+            [ring.middleware.content-type :refer [wrap-content-type]]
+            [ring.middleware.cors :refer [wrap-cors]]
             [ring.middleware.json :refer [wrap-json-response]]
             [ring.middleware.params :refer [wrap-params]]
+            [ring.middleware.resource :refer [wrap-resource]]
             [ring.util.response :as response]
-            [ring.middleware.cors :refer [wrap-cors]]
             [tado-data-analyser.api :as tado]
+            [tado-data-analyser.auth :as auth]
             [taoensso.timbre :as log]))
 
 (defn- wrap-exception
-  "Catches unhandled exceptions and returns a JSON error response."
+  "Catches unhandled exceptions and returns a JSON 500 response."
   [handler]
   (fn [req]
     (try
@@ -20,8 +24,52 @@
         {:status 500
          :body   {:error (.getMessage e)}}))))
 
-(def routes
+(defn- wrap-auth-required
+  "Returns 401 for /api/* requests (except /api/auth/) when not authenticated."
+  [handler]
+  (fn [req]
+    (let [uri (:uri req)]
+      (if (and (str/starts-with? uri "/api/")
+               (not (str/starts-with? uri "/api/auth/"))
+               (not= :authenticated (auth/get-auth-status)))
+        {:status 401
+         :body   {:error "Not authenticated"}}
+        (handler req)))))
+
+(defn- auth-status-response
+  "Builds the auth status response map."
+  []
+  (let [status  (auth/get-auth-status)
+        pending @auth/pending-flow]
+    (cond-> {:status (name status)}
+      (= status :pending)
+      (merge {:verificationUri (:verification-uri pending)
+              :userCode        (:user-code pending)
+              :expiresIn       (:expires-in pending)}))))
+
+(def ^:private routes
   ["/api"
+   ["/auth"
+    ["/status"
+     {:get {:handler (fn [_] (response/response (auth-status-response)))}}]
+
+    ["/start"
+     {:post {:handler (fn [_]
+               (let [status (auth/get-auth-status)]
+                 (cond
+                   (= status :authenticated)
+                   (response/response {:status "authenticated"})
+
+                   (= status :pending)
+                   (response/response (auth-status-response))
+
+                   :else
+                   (let [flow (auth/start-device-flow-and-poll!)]
+                     (response/response {:status          "pending"
+                                         :verificationUri (:verification-uri flow)
+                                         :userCode        (:user-code flow)
+                                         :expiresIn       (:expires-in flow)})))))}}]]
+
    ["/me"
     {:get {:handler (fn [_] (response/response (tado/get-me)))}}]
 
@@ -58,18 +106,28 @@
      {:get {:handler (fn [req]
                        (-> req :path-params :home-id tado/get-weather response/response))}}]]])
 
+(defn- spa-fallback
+  "Serves the SPA index.html for any non-API route, enabling client-side routing."
+  [req]
+  (if (str/starts-with? (:uri req) "/api")
+    (response/not-found {:error "Not found"})
+    (-> (response/resource-response "index.html" {:root "public"})
+        (response/content-type "text/html; charset=utf-8"))))
+
 (defn make-app
   "Assembles the Ring application stack."
   []
   (-> (reitit/ring-handler
        (reitit/router routes)
-       (reitit/create-default-handler
-        {:not-found (constantly (response/not-found {:error "Not found"}))}))
-      (wrap-exception)
-      (wrap-json-response)
-      (wrap-params)
+       (reitit/create-default-handler {:not-found spa-fallback}))
+      wrap-auth-required
+      wrap-exception
+      wrap-json-response
+      wrap-params
+      (wrap-resource "public")
+      wrap-content-type
       (wrap-cors :access-control-allow-origin  [#".*"]
-                 :access-control-allow-methods [:get :options]
+                 :access-control-allow-methods [:get :post :options]
                  :access-control-allow-headers ["Content-Type" "Authorization"])))
 
 (defn start!
@@ -79,7 +137,7 @@
   (jetty/run-jetty (make-app) {:port port :join? false}))
 
 (defn stop!
-  "Stops the given Jetty `server` instance."
+  "Stops the given Jetty server instance."
   [server]
   (log/info "Stopping server")
   (.stop server))

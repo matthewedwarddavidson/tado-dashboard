@@ -1,30 +1,47 @@
 import { useEffect, useState } from "react";
-import { format, eachDayOfInterval, parseISO } from "date-fns";
+import { format, eachDayOfInterval, parseISO, subHours } from "date-fns";
 import { api, mergeDayReports } from "./api";
 import type { Home, Zone, ZoneState, DayReport, WeatherReport } from "./api";
+import { AuthPage } from "./components/AuthPage";
 import { ZoneCard } from "./components/ZoneCard";
 import type { SparkData } from "./components/ZoneCard";
 import { MultiZoneChart, SERIES_CONFIG, ZONE_COLORS } from "./components/MultiZoneChart";
 import type { SeriesKey } from "./components/MultiZoneChart";
 
-function today(): string {
-  return format(new Date(), "yyyy-MM-dd");
+type AuthState = "unknown" | "authenticated" | "unauthenticated";
+
+function nowIso(): string {
+  return format(new Date(), "yyyy-MM-dd'T'HH:mm");
+}
+
+function hoursAgoIso(n: number): string {
+  return format(subHours(new Date(), n), "yyyy-MM-dd'T'HH:mm");
 }
 
 const ALL_SERIES: SeriesKey[] = ["measured", "humidity", "setPoint", "heating"];
 
 export default function App() {
+  const [authState, setAuthState] = useState<AuthState>("unknown");
   const [homes, setHomes] = useState<Home[]>([]);
   const [selectedHome, setSelectedHome] = useState<number | null>(null);
   const [zones, setZones] = useState<Zone[]>([]);
   const [zoneStates, setZoneStates] = useState<Record<number, ZoneState>>({});
   const [selectedZones, setSelectedZones] = useState<number[]>([]);
-  const [fromDate, setFromDate] = useState<string>(today());
-  const [toDate, setToDate] = useState<string>(today());
+  const [from, setFrom] = useState<string>(hoursAgoIso(24));
+  const [to, setTo] = useState<string>(nowIso());
   const [dayReports, setDayReports] = useState<Record<number, DayReport>>({});
   const [visibleSeries, setVisibleSeries] = useState<Set<SeriesKey>>(new Set(ALL_SERIES));
   const [weather, setWeather] = useState<WeatherReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stateRefreshIn, setStateRefreshIn] = useState(30);
+  const [chartRefreshIn, setChartRefreshIn] = useState(15 * 60);
+
+  // Check auth status on mount
+  useEffect(() => {
+    api.getAuthStatus()
+      .then((s) => setAuthState(s.status === "authenticated" ? "authenticated" : "unauthenticated"))
+      .catch(() => setAuthState("unauthenticated"));
+  }, []);
 
   // Load user + homes on mount
   useEffect(() => {
@@ -67,6 +84,43 @@ export default function App() {
     });
   }, [selectedHome, zones]);
 
+  // Live refresh: zone states + weather every 30 seconds
+  useEffect(() => {
+    if (selectedHome == null || zones.length === 0) return;
+    const id = setInterval(() => {
+      zones.forEach((zone) => {
+        api.getZoneState(selectedHome, zone.id)
+          .then((state) => setZoneStates((prev) => ({ ...prev, [zone.id]: state })))
+          .catch(() => {});
+      });
+      api.getWeather(selectedHome).then(setWeather).catch(() => {});
+      setStateRefreshIn(30);
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [selectedHome, zones]);
+
+  // Live chart refresh: advance 'to' every 15 minutes if it is tracking now.
+  // Advancing 'to' triggers the day-report effect to re-fetch with updated data.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTo((prev) => {
+        const ageMs = Date.now() - new Date(prev).getTime();
+        return ageMs < 16 * 60 * 1000 ? nowIso() : prev;
+      });
+      setChartRefreshIn(15 * 60);
+    }, 15 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // 1-second countdown tick
+  useEffect(() => {
+    const id = setInterval(() => {
+      setStateRefreshIn((n) => Math.max(0, n - 1));
+      setChartRefreshIn((n) => Math.max(0, n - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
   // Load day reports for all selected zones whenever selection or date range changes
   useEffect(() => {
     if (selectedHome == null) return;
@@ -74,8 +128,8 @@ export default function App() {
     if (selectedZones.length === 0) return;
 
     const dates = eachDayOfInterval({
-      start: parseISO(fromDate),
-      end:   parseISO(toDate),
+      start: parseISO(from),
+      end:   parseISO(to),
     }).map((d) => format(d, "yyyy-MM-dd"));
 
     // Accumulate per-zone reports outside React state, then merge once all days arrive
@@ -96,7 +150,7 @@ export default function App() {
           .catch((e: Error) => setError(e.message));
       });
     });
-  }, [selectedHome, selectedZones, fromDate, toDate]);
+  }, [selectedHome, selectedZones, from, to]);
 
   const toggleZone = (zoneId: number) => {
     setSelectedZones((prev) =>
@@ -118,7 +172,13 @@ export default function App() {
 
   const chartZones = zones.filter((z) => selectedZones.includes(z.id));
   const reportsReady = selectedZones.some((id) => dayReports[id]);
-  const multiDay = fromDate !== toDate;
+  const isLiveChart = Date.now() - new Date(to).getTime() < 16 * 60 * 1000;
+
+  function fmtCountdown(secs: number): string {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return m > 0 ? `${m}:${s.toString().padStart(2, "0")}` : `${s}s`;
+  }
 
   // Stable colour per zone based on its position in the full zones list
   const zoneColorMap: Record<number, string> = Object.fromEntries(
@@ -141,6 +201,18 @@ export default function App() {
     };
   };
 
+  if (authState === "unknown") {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-gray-400 text-sm">Loading…</div>
+      </div>
+    );
+  }
+
+  if (authState !== "authenticated") {
+    return <AuthPage onAuthenticated={() => setAuthState("authenticated")} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
       {/* Header */}
@@ -160,10 +232,16 @@ export default function App() {
         )}
 
         {weather && (
-          <div className="ml-auto text-sm text-gray-500 flex gap-4">
+          <div className="ml-auto text-sm text-gray-500 flex items-center gap-4">
             <span>Outside: {weather.outsideTemperature.celsius.toFixed(1)}°C</span>
             <span>☀️ {weather.solarIntensity.percentage.toFixed(0)}%</span>
             <span>{weather.weatherState.value.replace(/_/g, " ")}</span>
+            {zones.length > 0 && (
+              <span className="flex items-center gap-1.5 text-xs text-gray-400 border-l pl-4">
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                readings in {fmtCountdown(stateRefreshIn)}
+              </span>
+            )}
           </div>
         )}
       </header>
@@ -212,24 +290,30 @@ export default function App() {
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
                 Day report
               </h2>
+              {isLiveChart && (
+                <span className="text-xs text-gray-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  chart in {fmtCountdown(chartRefreshIn)}
+                </span>
+              )}
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <label>From
                   <input
-                    type="date"
+                    type="datetime-local"
                     className="ml-2 border rounded-lg px-3 py-1.5 text-gray-700"
-                    value={fromDate}
-                    max={toDate}
-                    onChange={(e) => setFromDate(e.target.value)}
+                    value={from}
+                    max={to}
+                    onChange={(e) => setFrom(e.target.value)}
                   />
                 </label>
                 <label>To
                   <input
-                    type="date"
+                    type="datetime-local"
                     className="ml-2 border rounded-lg px-3 py-1.5 text-gray-700"
-                    value={toDate}
-                    min={fromDate}
-                    max={today()}
-                    onChange={(e) => setToDate(e.target.value)}
+                    value={to}
+                    min={from}
+                    max={nowIso()}
+                    onChange={(e) => setTo(e.target.value)}
                   />
                 </label>
               </div>
@@ -256,7 +340,8 @@ export default function App() {
                 zones={chartZones}
                 reports={dayReports}
                 visibleSeries={visibleSeries}
-                multiDay={multiDay}
+                from={from}
+                to={to}
                 zoneColors={zoneColorMap}
               />
             ) : (

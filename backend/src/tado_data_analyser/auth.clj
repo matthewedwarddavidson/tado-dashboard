@@ -20,6 +20,13 @@
 ;; Holds {:access-token "...", :refresh-token "...", :expires-at #inst "..."}
 (def token-state (atom nil))
 
+;; Current authentication status: :unauthenticated | :pending | :authenticated
+(def auth-status (atom :unauthenticated))
+
+;; Device flow info shared with the server while auth is in progress
+;; {:verification-uri "..." :user-code "..." :device-code "..." :expires-in 300}
+(def pending-flow (atom nil))
+
 (defn- expires-at
   "Calculates the token expiry Instant, with a 30-second safety margin."
   [expires-in-seconds]
@@ -67,7 +74,7 @@
 
 (defn- poll-for-token
   "Polls the token endpoint until the user completes authorization.
-   Blocks the calling thread."
+   Blocks the calling thread. Throws on expiry or denial."
   [device-code interval-secs]
   (loop []
     (Thread/sleep (* interval-secs 1000))
@@ -77,50 +84,68 @@
                                              :grant_type  device-code-grant}
                            :as               :json
                            :throw-exceptions false})]
-      (if (= 200 (:status resp))
+      (cond
+        (= 200 (:status resp))
         (parse-token-response (:body resp))
+
+        (= "expired_token" (-> resp :body :error))
+        (throw (ex-info "Device code expired" {:error :expired}))
+
+        (= "access_denied" (-> resp :body :error))
+        (throw (ex-info "Authorization denied" {:error :denied}))
+
+        :else
         (do
-          (log/info "Waiting for device authorization...")
+          (log/debug "Waiting for device authorization...")
           (recur))))))
 
-(defn- authenticate-via-device-flow!
-  "Runs the full device authorization flow, blocking until the user approves.
-   Persists the resulting refresh token to disk."
+(defn get-auth-status
+  "Returns the current authentication status keyword."
   []
-  (let [{:keys [verification_uri user_code device_code interval]} (start-device-flow!)
-        interval-secs (or interval 5)
-        visit-url     (str verification_uri
-                           "?user_code=" user_code
-                           "&client_id=" client-id)]
-    (println)
-    (println "=== tado° Authorization Required ===")
-    (println (str "1. Open:  " visit-url))
-    (println (str "2. Code:  " user_code))
-    (println "Waiting for authorization (check your browser)...")
-    (println)
-    (let [new-state (poll-for-token device_code interval-secs)]
-      (save-refresh-token! (:refresh-token new-state))
-      (reset! token-state new-state)
-      (log/info "tado authorization successful"))))
+  @auth-status)
 
-(defn ensure-authenticated!
-  "Ensures a valid token is present in token-state.
-   On first run, initiates the device authorization flow and blocks until complete.
-   On subsequent runs, attempts to reuse the stored refresh token."
+(defn try-restore-from-disk!
+  "Attempts to restore authentication from a stored refresh token.
+   Non-blocking: sets auth-status to :authenticated or :unauthenticated."
   []
-  (let [refresh-token (or (some-> @token-state :refresh-token)
-                          (load-refresh-token))]
-    (if refresh-token
+  (when-let [refresh-token (or (some-> @token-state :refresh-token)
+                               (load-refresh-token))]
+    (try
+      (let [new-state (fetch-token-with-refresh refresh-token)]
+        (reset! token-state new-state)
+        (reset! auth-status :authenticated)
+        (log/info "Restored tado authentication from stored token"))
+      (catch Exception e
+        (log/warn "Stored token invalid, browser auth required:" (.getMessage e))
+        (reset! auth-status :unauthenticated)))))
+
+(defn start-device-flow-and-poll!
+  "Initiates the device authorization flow and polls in a background thread.
+   Returns the pending flow map immediately for display in the browser."
+  []
+  (let [{:keys [verification_uri user_code device_code interval expires_in]} (start-device-flow!)
+        interval-secs (or interval 5)
+        ;; tado's verification_uri is bare — client_id and user_code must be appended
+        full-uri      (str verification_uri "?user_code=" user_code "&client_id=" client-id)
+        flow {:verification-uri full-uri
+              :user-code        user_code
+              :device-code      device_code
+              :expires-in       expires_in}]
+    (reset! auth-status :pending)
+    (reset! pending-flow flow)
+    (future
       (try
-        (let [new-state (fetch-token-with-refresh refresh-token)]
+        (let [new-state (poll-for-token device_code interval-secs)]
+          (save-refresh-token! (:refresh-token new-state))
           (reset! token-state new-state)
-          (log/info "tado authentication successful"))
+          (reset! pending-flow nil)
+          (reset! auth-status :authenticated)
+          (log/info "tado browser authorization successful"))
         (catch Exception e
-          (log/warn "Stored refresh token is invalid, re-authorizing:" (.getMessage e))
-          (authenticate-via-device-flow!)))
-      (do
-        (log/info "No stored token found, starting device authorization flow")
-        (authenticate-via-device-flow!)))))
+          (log/error "Device flow failed:" (.getMessage e))
+          (reset! pending-flow nil)
+          (reset! auth-status :unauthenticated))))
+    flow))
 
 (defn get-access-token
   "Returns a valid access token, refreshing it silently if expired."

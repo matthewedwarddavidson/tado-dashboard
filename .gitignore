@@ -21,10 +21,10 @@ PLAN.md
 backend/.cpcache/
 backend/.clj-kondo/
 backend/target/
+backend/resources/public/
 
 # Frontend
 frontend/node_modules/
-frontend/dist/
 
 # Stored OAuth refresh token
 backend/.tado-token.edn

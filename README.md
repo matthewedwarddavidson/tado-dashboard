@@ -16,25 +16,35 @@ a clean REST API for the frontend.
 
 ## Setup
 
-1. In two separate terminals:
+### Option A — combined server (recommended)
 
 ```sh
-make backend    # starts the API server on http://localhost:3000
-make frontend   # installs deps and starts the dev server on http://localhost:5173
+make start   # builds frontend, starts server at http://localhost:3000
 ```
 
-On **first run**, `make backend` will print a URL — open it in your browser, log in
-with your tado° account, and the server will continue automatically. The resulting
-refresh token is saved to `backend/.tado-token.edn` so subsequent restarts skip
-this step.
+On first run, open `http://localhost:3000` in your browser. You'll be prompted to
+connect your tado° account — click **Connect tado°**, approve in the new tab, and
+the dashboard loads automatically. The refresh token is saved to
+`backend/.tado-token.edn` so subsequent starts need no browser interaction.
+
+### Option B — development (hot-reload frontend)
+
+Run in two separate terminals:
+
+```sh
+make backend    # API server on http://localhost:3000
+make frontend   # Vite dev server on http://localhost:5173
+```
+
+### Option C — standalone uberjar
+
+```sh
+make jar
+java -Djavax.net.ssl.trustStoreType=KeychainStore \
+     -jar backend/target/tado-data-analyser-0.1.0.jar
+```
 
 Run `make help` to see all available targets.
-
-### Production build
-
-```sh
-make build   # outputs to frontend/dist/
-```
 
 ## API Routes
 

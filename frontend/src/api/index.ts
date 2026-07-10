@@ -1,5 +1,12 @@
 // Types matching the tado API v2 response shapes used by our backend proxy.
 
+export interface AuthStatus {
+  status: "authenticated" | "unauthenticated" | "pending";
+  verificationUri?: string;
+  userCode?: string;
+  expiresIn?: number;
+}
+
 export interface Home {
   id: number;
   name: string;
@@ -113,6 +120,11 @@ async function apiFetch<T>(path: string): Promise<T> {
 }
 
 export const api = {
+  getAuthStatus: () => apiFetch<AuthStatus>("/api/auth/status"),
+
+  startAuth: (): Promise<AuthStatus> =>
+    fetch("/api/auth/start", { method: "POST" }).then((r) => r.json()),
+
   getMe: () => apiFetch<User>("/api/me"),
 
   getZones: (homeId: number) =>

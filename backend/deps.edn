@@ -13,9 +13,13 @@
         org.slf4j/slf4j-simple        {:mvn/version "2.0.17"}}
 
  :aliases
- {:main {:main-opts ["-m" "tado-data-analyser.core"]
-         :jvm-opts  ["-Djavax.net.ssl.trustStoreType=KeychainStore"]}
+ {:main  {:main-opts ["-m" "tado-data-analyser.core"]
+          :jvm-opts  ["-Djavax.net.ssl.trustStoreType=KeychainStore"]}
 
-  :dev {:extra-paths ["dev"]
-        :extra-deps  {nrepl/nrepl {:mvn/version "1.3.1"}
-                      cider/cider-nrepl {:mvn/version "0.62.0"}}}}}
+  :build {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.9"}}
+          :ns-default build}
+
+  :dev   {:extra-paths ["dev"]
+          :extra-deps  {nrepl/nrepl       {:mvn/version "1.3.1"}
+                        cider/cider-nrepl {:mvn/version "0.62.0"}}}}}
+

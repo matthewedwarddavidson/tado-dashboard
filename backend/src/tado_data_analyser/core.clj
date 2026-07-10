@@ -9,12 +9,13 @@
 (defonce server-instance (atom nil))
 
 (defn start!
-  "Authenticates with tado (device flow if first run) then starts the HTTP server."
+  "Attempts to restore auth from disk (non-blocking), then starts the HTTP server.
+   If no stored token exists, browser-based auth is used on first access."
   []
   (let [{:keys [server]} (config/load-config)
         port (or (:port server) 3000)]
     (log/info "Starting tado data analyser")
-    (auth/ensure-authenticated!)
+    (auth/try-restore-from-disk!)
     (reset! server-instance (server/start! port))))
 
 (defn stop!
