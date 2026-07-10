@@ -8,7 +8,7 @@ export interface SparkData {
 interface Props {
   zone: Zone;
   state: ZoneState | null;
-  color?: string;
+  colour?: string;
   sparkData?: SparkData;
 }
 
@@ -56,7 +56,7 @@ function fmt(celsius: number) {
   return `${celsius.toFixed(1)}°C`;
 }
 
-export function ZoneCard({ zone, state, color = "#3b82f6", sparkData }: Props) {
+export function ZoneCard({ zone, state, colour = "#3b82f6", sparkData }: Props) {
   const temp     = state?.sensorDataPoints?.insideTemperature?.celsius;
   const humidity = state?.sensorDataPoints?.humidity?.percentage;
   const heating  = state?.activityDataPoints?.heatingPower?.percentage;
@@ -66,7 +66,7 @@ export function ZoneCard({ zone, state, color = "#3b82f6", sparkData }: Props) {
   return (
     <div
       className="bg-white rounded-2xl shadow w-60 shrink-0 overflow-hidden"
-      style={{ borderLeft: `4px solid ${color}` }}
+      style={{ borderLeft: `4px solid ${colour}` }}
     >
       <div className="px-4 py-3 flex flex-col gap-2.5">
         <h2 className="text-xs font-semibold tracking-widest uppercase text-gray-400">
@@ -80,14 +80,14 @@ export function ZoneCard({ zone, state, color = "#3b82f6", sparkData }: Props) {
             {/* Temperature */}
             <div className="flex items-center justify-between">
               <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-bold leading-none" style={{ color }}>
+                <span className="text-3xl font-bold leading-none" style={{ color: colour }}>
                   {temp != null ? fmt(temp) : "—"}
                 </span>
                 {setPoint != null && power === "ON" && (
                   <span className="text-xs text-gray-400 ml-0.5">→ {fmt(setPoint)}</span>
                 )}
               </div>
-              {sparkData && <Sparkline values={sparkData.temp} color={color} />}
+              {sparkData && <Sparkline values={sparkData.temp} color={colour} />}
             </div>
 
             {/* Humidity */}

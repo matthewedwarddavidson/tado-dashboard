@@ -1,7 +1,7 @@
 (ns tado-data-analyser.auth
   "Manages OAuth2 device-code-flow token lifecycle for the tado API.
-   On first run, prints a URL for the user to authorize the app.
-   The resulting refresh token is persisted locally to avoid re-authorization
+   On first run the user is prompted to authorise the app via the browser.
+   The resulting refresh token is persisted locally to avoid re-authorisation
    on subsequent restarts."
   (:require [clj-http.client :as http]
             [clojure.edn :as edn]
@@ -64,7 +64,7 @@
       parse-token-response))
 
 (defn- start-device-flow!
-  "Initiates the device authorization flow, returning the authorization response body."
+  "Initiates the device authorisation flow, returning the authorisation response body."
   []
   (-> (http/post device-auth-url
                  {:query-params {:client_id client-id
@@ -120,7 +120,7 @@
         (reset! auth-status :unauthenticated)))))
 
 (defn start-device-flow-and-poll!
-  "Initiates the device authorization flow and polls in a background thread.
+  "Initiates the device authorisation flow and polls in a background thread.
    Returns the pending flow map immediately for display in the browser."
   []
   (let [{:keys [verification_uri user_code device_code interval expires_in]} (start-device-flow!)

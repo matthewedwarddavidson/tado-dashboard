@@ -5,7 +5,7 @@ import type { Home, Zone, ZoneState, DayReport, WeatherReport } from "./api";
 import { AuthPage } from "./components/AuthPage";
 import { ZoneCard } from "./components/ZoneCard";
 import type { SparkData } from "./components/ZoneCard";
-import { MultiZoneChart, SERIES_CONFIG, ZONE_COLORS } from "./components/MultiZoneChart";
+import { MultiZoneChart, SERIES_CONFIG, ZONE_COLOURS } from "./components/MultiZoneChart";
 import type { SeriesKey } from "./components/MultiZoneChart";
 
 type AuthState = "unknown" | "authenticated" | "unauthenticated";
@@ -18,7 +18,13 @@ function hoursAgoIso(n: number): string {
   return format(subHours(new Date(), n), "yyyy-MM-dd'T'HH:mm");
 }
 
-const ALL_SERIES: SeriesKey[] = ["measured", "humidity", "setPoint", "heating"];
+function fmtCountdown(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return m > 0 ? `${m}:${s.toString().padStart(2, "0")}` : `${s}s`;
+}
+
+const ALL_SERIES: SeriesKey[] = ["measured", "humidity", "setPoint", "heating", "outside"];
 
 export default function App() {
   const [authState, setAuthState] = useState<AuthState>("unknown");
@@ -174,15 +180,9 @@ export default function App() {
   const reportsReady = selectedZones.some((id) => dayReports[id]);
   const isLiveChart = Date.now() - new Date(to).getTime() < 16 * 60 * 1000;
 
-  function fmtCountdown(secs: number): string {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return m > 0 ? `${m}:${s.toString().padStart(2, "0")}` : `${s}s`;
-  }
-
   // Stable colour per zone based on its position in the full zones list
-  const zoneColorMap: Record<number, string> = Object.fromEntries(
-    zones.map((z, i) => [z.id, ZONE_COLORS[i % ZONE_COLORS.length]])
+  const zoneColourMap: Record<number, string> = Object.fromEntries(
+    zones.map((z, i) => [z.id, ZONE_COLOURS[i % ZONE_COLOURS.length]])
   );
 
   // Extract thinned sparkline series from each zone's day report
@@ -210,7 +210,7 @@ export default function App() {
   }
 
   if (authState !== "authenticated") {
-    return <AuthPage onAuthenticated={() => setAuthState("authenticated")} />;
+    return <AuthPage />;
   }
 
   return (
@@ -268,13 +268,13 @@ export default function App() {
                     (selectedZones.includes(zone.id) ? "" : "opacity-50 hover:opacity-80")
                   }
                   style={selectedZones.includes(zone.id)
-                    ? { boxShadow: `0 0 0 2px ${zoneColorMap[zone.id]}` }
+                    ? { boxShadow: `0 0 0 2px ${zoneColourMap[zone.id]}` }
                     : undefined}
                 >
                   <ZoneCard
                     zone={zone}
                     state={zoneStates[zone.id] ?? null}
-                    color={zoneColorMap[zone.id]}
+                    colour={zoneColourMap[zone.id]}
                     sparkData={getSparkData(zone.id)}
                   />
                 </div>
@@ -342,7 +342,7 @@ export default function App() {
                 visibleSeries={visibleSeries}
                 from={from}
                 to={to}
-                zoneColors={zoneColorMap}
+                zoneColours={zoneColourMap}
               />
             ) : (
               <div className="bg-white rounded-2xl shadow p-8 text-center text-gray-400">

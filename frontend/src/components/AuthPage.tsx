@@ -2,11 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "../api";
 import type { AuthStatus } from "../api";
 
-interface Props {
-  onAuthenticated: () => void;
-}
-
-export function AuthPage({ onAuthenticated }: Props) {
+export function AuthPage() {
   const [phase, setPhase] = useState<"idle" | "pending" | "error">("idle");
   const [verificationUri, setVerificationUri] = useState<string | null>(null);
   const [userCode, setUserCode] = useState<string | null>(null);
@@ -45,7 +41,7 @@ export function AuthPage({ onAuthenticated }: Props) {
       setErrorMsg("Failed to start authentication. Is the backend running?");
       setPhase("error");
     }
-  }, [onAuthenticated]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-6">

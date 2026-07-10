@@ -5,13 +5,39 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from "recharts";
 import { format, parseISO } from "date-fns";
 import type { DayReport, DataInterval, ZoneSetting, Zone } from "../api";
 
-export type SeriesKey = "measured" | "setPoint" | "humidity" | "heating";
+interface LegendEntry {
+  value: string;
+  color: string;
+  payload?: { strokeDasharray?: string; strokeWidth?: number };
+}
+
+function ChartLegend({ payload }: { payload?: LegendEntry[] }) {
+  if (!payload?.length) return null;
+  return (
+    <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 pt-2 text-xs text-gray-600">
+      {payload.map((entry) => (
+        <span key={entry.value} className="flex items-center gap-1.5">
+          <svg width="24" height="12" aria-hidden="true">
+            <line
+              x1="0" y1="6" x2="24" y2="6"
+              stroke={entry.color}
+              strokeWidth={entry.payload?.strokeWidth ?? 2}
+              strokeDasharray={entry.payload?.strokeDasharray}
+            />
+          </svg>
+          {entry.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export type SeriesKey = "measured" | "setPoint" | "humidity" | "heating" | "outside";
 
 interface SeriesConfig {
   label: string;
@@ -20,13 +46,14 @@ interface SeriesConfig {
 }
 
 export const SERIES_CONFIG: Record<SeriesKey, SeriesConfig> = {
-  measured: { label: "Measured °C", axis: "temp" },
+  measured: { label: "Measured °C",  axis: "temp" },
   setPoint: { label: "Set point °C", axis: "temp", strokeDasharray: "4 2" },
   humidity: { label: "Humidity %",   axis: "pct",  strokeDasharray: "1 4" },
   heating:  { label: "Heating %",    axis: "pct",  strokeDasharray: "6 2" },
+  outside:  { label: "Outside °C",   axis: "temp", strokeDasharray: "3 3" },
 };
 
-export const ZONE_COLORS = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6"];
+export const ZONE_COLOURS = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6"];
 
 interface Props {
   zones: Zone[];
@@ -34,7 +61,7 @@ interface Props {
   visibleSeries: Set<SeriesKey>;
   from: string;
   to: string;
-  zoneColors: Record<number, string>;
+  zoneColours: Record<number, string>;
 }
 
 function atInterval<T>(intervals: DataInterval<T>[], ts: string): T | undefined {
@@ -142,7 +169,7 @@ function buildChartData(
   });
 }
 
-export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneColors }: Props) {
+export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneColours }: Props) {
   const zonesWithData = zones.filter((z) => reports[z.id]);
   const multiDay = from.substring(0, 10) !== to.substring(0, 10);
   const data = buildChartData(zonesWithData, reports, from, to, multiDay);
@@ -179,9 +206,8 @@ export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneCo
                 : [`${num.toFixed(0)}%`, label];
             }}
           />
-          <Legend />
           {/* Outside temperature — single line, same for the whole home */}
-          {data.some((row) => row["outside"] != null) && (
+          {visibleSeries.has("outside") && data.some((row) => row["outside"] != null) && (
             <Line
               yAxisId="temp"
               type="monotone"
@@ -196,7 +222,7 @@ export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneCo
           )}
           {zonesWithData.flatMap((zone) =>
             (Object.entries(SERIES_CONFIG) as [SeriesKey, SeriesConfig][])
-              .filter(([key]) => visibleSeries.has(key))
+              .filter(([key]) => visibleSeries.has(key) && key !== "outside")
               .map(([key, config]) => (
                 <Line
                   key={`${zone.id}_${key}`}
@@ -204,7 +230,7 @@ export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneCo
                   type={key === "setPoint" || key === "heating" ? "stepAfter" : "monotone"}
                   dataKey={`${zone.id}_${key}`}
                   name={`${zone.name} – ${config.label}`}
-                  stroke={zoneColors[zone.id]}
+                  stroke={zoneColours[zone.id]}
                   strokeDasharray={config.strokeDasharray}
                   strokeWidth={key === "measured" ? 2 : 1.5}
                   dot={false}
@@ -214,6 +240,20 @@ export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneCo
           )}
         </LineChart>
       </ResponsiveContainer>
+      <ChartLegend payload={[
+        ...(visibleSeries.has("outside") && data.some((r) => r["outside"] != null)
+          ? [{ value: "Outside °C", color: "#94a3b8", payload: { strokeDasharray: "3 3", strokeWidth: 1.5 } }]
+          : []),
+        ...zonesWithData.flatMap((zone) =>
+          (Object.entries(SERIES_CONFIG) as [SeriesKey, SeriesConfig][])
+            .filter(([key]) => visibleSeries.has(key) && key !== "outside")
+            .map(([key, config]) => ({
+              value: `${zone.name} – ${config.label}`,
+              color: zoneColours[zone.id],
+              payload: { strokeDasharray: config.strokeDasharray, strokeWidth: key === "measured" ? 2 : 1.5 },
+            }))
+        ),
+      ]} />
     </div>
   );
 }

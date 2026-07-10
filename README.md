@@ -56,4 +56,3 @@ Run `make help` to see all available targets.
 | GET | `/api/homes/:id/zones/:zone-id/day-report?date=YYYY-MM-DD` | Historical day data |
 | GET | `/api/homes/:id/weather` | Outside temperature & weather |
 | GET | `/api/homes/:id/state` | Home presence (HOME/AWAY) |
-
