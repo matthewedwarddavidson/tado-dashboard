@@ -30,18 +30,23 @@ function Sparkline({
   const range = max - min || 1;
   const pad = 2;
 
-  const pts = values
-    .map((v, i) => {
-      const x = (i / (values.length - 1)) * w;
-      const y = h - pad - ((v - min) / range) * (h - pad * 2);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+  const points = values.map((v, i) => ({
+    x: (i / (values.length - 1)) * w,
+    y: h - pad - ((v - min) / range) * (h - pad * 2),
+  }));
+
+  // Build a smooth cubic bezier path (monotone-style) matching the main chart.
+  const d = points.reduce((acc, pt, i) => {
+    if (i === 0) return `M ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
+    const prev = points[i - 1];
+    const cpX = ((prev.x + pt.x) / 2).toFixed(1);
+    return `${acc} C ${cpX},${prev.y.toFixed(1)} ${cpX},${pt.y.toFixed(1)} ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
+  }, "");
 
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-      <polyline
-        points={pts}
+      <path
+        d={d}
         fill="none"
         stroke={color}
         strokeWidth="1.5"
