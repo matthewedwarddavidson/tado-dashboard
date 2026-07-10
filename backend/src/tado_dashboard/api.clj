@@ -1,7 +1,7 @@
-(ns tado-data-analyser.api
-  "Client for the tado API v2. Uses the global token from tado-data-analyser.auth."
+(ns tado-dashboard.api
+  "Client for the tado API v2. Uses the global token from tado-dashboard.auth."
   (:require [clj-http.client :as http]
-            [tado-data-analyser.auth :as auth]))
+            [tado-dashboard.auth :as auth]))
 
 (def base-url "https://my.tado.com/api/v2")
 

@@ -1,8 +1,8 @@
-(ns tado-data-analyser.core
+(ns tado-dashboard.core
   "Entry point for the tado data analyser backend."
-  (:require [tado-data-analyser.auth :as auth]
-            [tado-data-analyser.config :as config]
-            [tado-data-analyser.server :as server]
+  (:require [tado-dashboard.auth :as auth]
+            [tado-dashboard.config :as config]
+            [tado-dashboard.server :as server]
             [taoensso.timbre :as log])
   (:gen-class))
 

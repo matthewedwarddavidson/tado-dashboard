@@ -1,4 +1,4 @@
-(ns tado-data-analyser.auth
+(ns tado-dashboard.auth
   "Manages OAuth2 device-code-flow token lifecycle for the tado API.
    On first run the user is prompted to authorise the app via the browser.
    The resulting refresh token is persisted locally to avoid re-authorisation

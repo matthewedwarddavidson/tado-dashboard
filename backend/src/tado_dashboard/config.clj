@@ -1,4 +1,4 @@
-(ns tado-data-analyser.config
+(ns tado-dashboard.config
   "Loads application configuration from config.edn, with environment variable overrides."
   (:require [aero.core :as aero]
             [clojure.java.io :as io]))

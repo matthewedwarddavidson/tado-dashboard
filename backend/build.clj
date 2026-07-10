@@ -2,7 +2,7 @@
   "Uberjar build script — run with: clj -T:build uber"
   (:require [clojure.tools.build.api :as b]))
 
-(def app-name "tado-data-analyser")
+(def app-name "tado-dashboard")
 (def version  "0.1.0")
 (def class-dir "target/classes")
 (def uber-file (format "target/%s-%s.jar" app-name version))
@@ -27,5 +27,5 @@
     (b/uber {:class-dir class-dir
              :uber-file uber-file
              :basis     basis
-             :main      'tado-data-analyser.core}))
+             :main      'tado-dashboard.core}))
   (println (str "Built " uber-file)))

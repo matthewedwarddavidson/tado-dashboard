@@ -13,7 +13,7 @@
         org.slf4j/slf4j-simple        {:mvn/version "2.0.17"}}
 
  :aliases
- {:main  {:main-opts ["-m" "tado-data-analyser.core"]
+ {:main  {:main-opts ["-m" "tado-dashboard.core"]
           :jvm-opts  ["-Djavax.net.ssl.trustStoreType=KeychainStore"]}
 
   :build {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.9"}}

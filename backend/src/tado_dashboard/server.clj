@@ -1,4 +1,4 @@
-(ns tado-data-analyser.server
+(ns tado-dashboard.server
   "Ring HTTP server with reitit routing, static file serving, and browser-based auth."
   (:require [clojure.string :as str]
             [reitit.ring :as reitit]
@@ -9,8 +9,8 @@
             [ring.middleware.params :refer [wrap-params]]
             [ring.middleware.resource :refer [wrap-resource]]
             [ring.util.response :as response]
-            [tado-data-analyser.api :as tado]
-            [tado-data-analyser.auth :as auth]
+            [tado-dashboard.api :as tado]
+            [tado-dashboard.auth :as auth]
             [taoensso.timbre :as log]))
 
 (defn- wrap-exception

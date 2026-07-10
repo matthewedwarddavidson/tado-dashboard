@@ -1,4 +1,4 @@
-# tado-data-analyser
+# tado-dashboard
 
 Better dashboards for your tado° smart thermostat data.
 
@@ -41,7 +41,7 @@ make frontend   # Vite dev server on http://localhost:5173
 ```sh
 make jar
 java -Djavax.net.ssl.trustStoreType=KeychainStore \
-     -jar backend/target/tado-data-analyser-0.1.0.jar
+     -jar backend/target/tado-dashboard-0.1.0.jar
 ```
 
 Run `make help` to see all available targets.

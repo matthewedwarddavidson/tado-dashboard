@@ -18,5 +18,5 @@ build: frontend-install ## Build frontend into backend/resources/public/
 start: build ## Build frontend then start the combined server (http://localhost:3000)
 	cd backend && clj -M:main
 
-jar: build ## Build a standalone uberjar (backend/target/tado-data-analyser-*.jar)
+jar: build ## Build a standalone uberjar (backend/target/tado-dashboard-*.jar)
 	cd backend && clj -T:build uber
