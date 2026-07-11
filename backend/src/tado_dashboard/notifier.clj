@@ -14,7 +14,7 @@
   []
   (if (.exists (io/file topic-file))
     (-> topic-file slurp edn/read-string :topic)
-    (let [topic (str (java.util.UUID/randomUUID))]
+    (let [topic (str (random-uuid))]
       (spit topic-file (pr-str {:topic topic}))
       (log/infof "Generated new ntfy.sh topic and saved to %s" topic-file)
       topic)))
