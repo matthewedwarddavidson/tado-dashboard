@@ -63,6 +63,20 @@
       :body
       parse-token-response))
 
+(defn- invalid-grant?
+  "Returns true if the exception is a tado invalid_grant (revoked/expired refresh token)."
+  [e]
+  (and (instance? clojure.lang.ExceptionInfo e)
+       (= 400 (-> e ex-data :status))
+       (some-> e ex-data :body str (.contains "invalid_grant"))))
+
+(defn- clear-stored-token!
+  "Removes the in-memory token state, the token file, and sets status to unauthenticated."
+  []
+  (reset! token-state nil)
+  (reset! auth-status :unauthenticated)
+  (io/delete-file token-file true))
+
 (defn- start-device-flow!
   "Initiates the device authorisation flow, returning the authorisation response body."
   []
@@ -106,7 +120,8 @@
 
 (defn try-restore-from-disk!
   "Attempts to restore authentication from a stored refresh token.
-   Non-blocking: sets auth-status to :authenticated or :unauthenticated."
+   Non-blocking: sets auth-status to :authenticated or :unauthenticated.
+   Deletes the token file if the stored token has been revoked."
   []
   (when-let [refresh-token (or (some-> @token-state :refresh-token)
                                (load-refresh-token))]
@@ -116,8 +131,11 @@
         (reset! auth-status :authenticated)
         (log/info "Restored tado authentication from stored token"))
       (catch Exception e
-        (log/warn "Stored token invalid, browser auth required:" (.getMessage e))
-        (reset! auth-status :unauthenticated)))))
+        (if (invalid-grant? e)
+          (do (log/warn "Stored refresh token has been revoked — re-authentication required")
+              (clear-stored-token!))
+          (do (log/warn "Stored token invalid, browser auth required:" (.getMessage e))
+              (reset! auth-status :unauthenticated)))))))
 
 (defn start-device-flow-and-poll!
   "Initiates the device authorisation flow and polls in a background thread.
@@ -148,11 +166,19 @@
     flow))
 
 (defn get-access-token
-  "Returns a valid access token, refreshing it silently if expired."
+  "Returns a valid access token, refreshing it silently if expired.
+   If the refresh token has been revoked, clears stored credentials and
+   throws so the caller receives a 401."
   []
   (let [state @token-state]
     (if (or (nil? state) (.isAfter (Instant/now) (:expires-at state)))
-      (let [new-state (fetch-token-with-refresh (:refresh-token state))]
-        (reset! token-state new-state)
-        (:access-token new-state))
+      (try
+        (let [new-state (fetch-token-with-refresh (:refresh-token state))]
+          (reset! token-state new-state)
+          (:access-token new-state))
+        (catch Exception e
+          (when (invalid-grant? e)
+            (log/warn "Refresh token revoked — clearing credentials, re-authentication required")
+            (clear-stored-token!))
+          (throw e)))
       (:access-token state))))
