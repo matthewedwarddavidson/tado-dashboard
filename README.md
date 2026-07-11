@@ -29,6 +29,45 @@ Open-Meteo is free with no account or API key required. The home's coordinates
 are read from tado's `/homes/:id` endpoint, so weather data always reflects the
 location of the thermostats rather than the user's device.
 
+## API limits
+
+### tado
+
+tado enforces a **per-day request limit** on their REST API
+([source](https://support.tado.com/en/articles/12165739-limitation-for-rest-api-usage)):
+
+| Account type | Daily limit |
+|---|---|
+| Standard | 100 requests / day |
+| Auto-Assist / AI Assist subscriber | 20,000 requests / day |
+
+> **⚠️ Standard accounts will hit 100 requests in under 10 minutes** when the
+> dashboard is open, because zone states are refreshed every 30 seconds across
+> all rooms. An Auto-Assist subscription is effectively required for continuous
+> use.
+
+The dashboard displays the remaining request count in the header and updates it
+on every refresh cycle. A toggle switch lets you pause auto-refresh to conserve
+requests — useful when you want to leave the page open without burning through
+your daily allowance. Refreshing resumes immediately when you toggle it back on.
+
+You can also check the raw limit by inspecting the `ratelimit` response header
+on any tado API call, e.g. `"perday";r=123` means 123 requests left;
+`"perday";r=0;t=60` means exhausted, refilling in 60 seconds.
+
+### Open-Meteo
+
+Open-Meteo's free tier has generous limits well above what this app will use:
+
+| Limit | Free tier |
+|---|---|
+| Per minute | 600 calls |
+| Per hour | 5,000 calls |
+| Per day | 10,000 calls |
+| Per month | 300,000 calls |
+
+Note: the free tier does not permit commercial use.
+
 ## Setup
 
 ### Option A — combined server (recommended)

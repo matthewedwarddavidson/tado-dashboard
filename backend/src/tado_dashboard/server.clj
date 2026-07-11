@@ -73,6 +73,9 @@
    ["/me"
     {:get {:handler (fn [_] (response/response (tado/get-me)))}}]
 
+   ["/tado/rate-limit"
+    {:get {:handler (fn [_] (response/response (tado/get-rate-limit)))}}]
+
    ["/homes/:home-id"
     [""
      {:get {:handler (fn [req]

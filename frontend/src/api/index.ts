@@ -1,5 +1,10 @@
 // Types matching the tado API v2 response shapes used by our backend proxy.
 
+export interface RateLimit {
+  remaining: number;
+  refillInSecs?: number;
+}
+
 export interface AuthStatus {
   status: "authenticated" | "unauthenticated" | "pending";
   verificationUri?: string;
@@ -167,6 +172,9 @@ export const api = {
 
   getWeather: (homeId: number) =>
     apiFetch<WeatherReport>(`/api/homes/${homeId}/weather`),
+
+  getRateLimit: () =>
+    apiFetch<RateLimit | null>("/api/tado/rate-limit"),
 
   getOutsideWeather: (homeId: number, from: string, to: string) =>
     apiFetch<OutsideWeather>(

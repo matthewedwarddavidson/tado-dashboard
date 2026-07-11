@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { format, eachDayOfInterval, parseISO, subHours } from "date-fns";
 import { api, mergeDayReports } from "./api";
-import type { Home, Zone, ZoneState, DayReport, WeatherReport, DataPoint, TemperatureValue, OutsideWeather } from "./api";
+import type { Home, Zone, ZoneState, DayReport, WeatherReport, DataPoint, TemperatureValue, OutsideWeather, RateLimit } from "./api";
 import { AuthPage } from "./components/AuthPage";
 import { ZoneCard } from "./components/ZoneCard";
 import type { SparkData } from "./components/ZoneCard";
@@ -38,6 +38,8 @@ export default function App() {
   const [dayReports, setDayReports] = useState<Record<number, DayReport>>({});
   const [visibleSeries, setVisibleSeries] = useState<Set<SeriesKey>>(new Set(ALL_SERIES));
   const [weather, setWeather] = useState<WeatherReport | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [rateLimit, setRateLimit] = useState<RateLimit | null>(null);
   const [outsideTemperature, setOutsideTemperature] = useState<DataPoint<TemperatureValue>[]>([]);
   const [outsideHumidity, setOutsideHumidity] = useState<DataPoint<number>[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -90,11 +92,13 @@ export default function App() {
         .then((state) => setZoneStates((prev) => ({ ...prev, [zone.id]: state })))
         .catch(() => {/* show card without live state */});
     });
+    api.getRateLimit().then((r) => { if (r) setRateLimit(r); }).catch(() => {});
   }, [selectedHome, zones]);
 
-  // Live refresh: zone states + weather every 30 seconds
+  // Live refresh: zone states + weather every 30 seconds (only when autoRefresh is on)
   useEffect(() => {
-    if (selectedHome == null || zones.length === 0) return;
+    if (selectedHome == null || zones.length === 0 || !autoRefresh) return;
+    setStateRefreshIn(30);
     const id = setInterval(() => {
       zones.forEach((zone) => {
         api.getZoneState(selectedHome, zone.id)
@@ -102,10 +106,11 @@ export default function App() {
           .catch(() => {});
       });
       api.getWeather(selectedHome).then(setWeather).catch(() => {});
+      api.getRateLimit().then((r) => { if (r) setRateLimit(r); }).catch(() => {});
       setStateRefreshIn(30);
     }, 30_000);
     return () => clearInterval(id);
-  }, [selectedHome, zones]);
+  }, [selectedHome, zones, autoRefresh]);
 
   // Live chart refresh: advance 'to' every 15 minutes if it is tracking now.
   // Advancing 'to' triggers the day-report effect to re-fetch with updated data.
@@ -251,10 +256,40 @@ export default function App() {
             <span>Outside: {weather.outsideTemperature.celsius.toFixed(1)}°C</span>
             <span>💧 {weather.relativeHumidity.percentage.toFixed(0)}%</span>
             {zones.length > 0 && (
-              <span className="flex items-center gap-1.5 text-xs text-gray-400 border-l pl-4">
-                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                readings in {fmtCountdown(stateRefreshIn)}
-              </span>
+              <div className="flex items-center gap-3 text-xs text-gray-400 border-l pl-4">
+                <button
+                  onClick={() => setAutoRefresh((v) => !v)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none ${
+                    autoRefresh ? "bg-green-400" : "bg-gray-300"
+                  }`}
+                  title={autoRefresh ? "Pause auto-refresh" : "Resume auto-refresh"}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                    autoRefresh ? "translate-x-[18px]" : "translate-x-0.5"
+                  }`} />
+                </button>
+                {autoRefresh ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                    readings in {fmtCountdown(stateRefreshIn)}
+                  </span>
+                ) : (
+                  <span>paused</span>
+                )}
+                {rateLimit != null && (
+                  <span className={`border-l pl-3 ${
+                    rateLimit.remaining === 0 ? "text-red-400" : ""
+                  }`}>
+                    {rateLimit.remaining === 0
+                      ? `⚠️ API limit reached${
+                          rateLimit.refillInSecs
+                            ? ` — refills in ${fmtCountdown(rateLimit.refillInSecs)}`
+                            : ""
+                        }`
+                      : `${rateLimit.remaining.toLocaleString("en-GB")} req left`}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         )}

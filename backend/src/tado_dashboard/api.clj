@@ -7,21 +7,44 @@
 
 (def base-url "https://my.tado.com/api/v2")
 
+;; Last known tado API rate limit, captured as a side-effect of every API call.
+(def rate-limit-state (atom nil))
+
+(defn- parse-rate-limit
+  "Parses the tado `ratelimit` response header into a map.
+   e.g. `\"perday\";r=123` → {:remaining 123}
+        `\"perday\";r=0;t=60` → {:remaining 0 :refillInSecs 60}"
+  [header-value]
+  (when header-value
+    (let [remaining (some-> (re-find #"r=(\d+)" header-value) second parse-long)
+          refill    (some-> (re-find #"t=(\d+)" header-value) second parse-long)]
+      (cond-> {:remaining remaining}
+        refill (assoc :refillInSecs refill)))))
+
 (defn- auth-headers
   "Builds the Authorization header map using the current access token."
   []
   {"Authorization" (str "Bearer " (auth/get-access-token))})
 
 (defn- api-get
-  "Makes an authenticated GET request to the tado API and returns the parsed body."
+  "Makes an authenticated GET request to the tado API and returns the parsed body.
+   Also captures the ratelimit response header into `rate-limit-state`."
   ([path]
    (api-get path {}))
   ([path query-params]
-   (-> (http/get (str base-url path)
-                 {:headers      (auth-headers)
-                  :query-params  query-params
-                  :as           :json})
-       :body)))
+   (let [resp (http/get (str base-url path)
+                        {:headers      (auth-headers)
+                         :query-params  query-params
+                         :as           :json})]
+     (some-> (get-in resp [:headers "ratelimit"])
+             parse-rate-limit
+             (->> (reset! rate-limit-state)))
+     (:body resp))))
+
+(defn get-rate-limit
+  "Returns the last known tado API rate limit state, or nil if no call has been made yet."
+  []
+  @rate-limit-state)
 
 (defn get-me
   "Returns the currently authenticated user, including their list of homes."
