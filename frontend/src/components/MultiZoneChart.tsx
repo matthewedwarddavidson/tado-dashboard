@@ -8,7 +8,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { format, parseISO } from "date-fns";
-import type { DayReport, DataInterval, ZoneSetting, Zone } from "../api";
+import type { DayReport, DataInterval, ZoneSetting, Zone, DataPoint, TemperatureValue } from "../api";
 
 interface LegendEntry {
   value: string;
@@ -37,7 +37,7 @@ function ChartLegend({ payload }: { payload?: LegendEntry[] }) {
   );
 }
 
-export type SeriesKey = "measured" | "setPoint" | "humidity" | "heating" | "outside";
+export type SeriesKey = "measured" | "setPoint" | "humidity" | "heating" | "outside" | "outsideHumidity";
 
 interface SeriesConfig {
   label: string;
@@ -46,11 +46,12 @@ interface SeriesConfig {
 }
 
 export const SERIES_CONFIG: Record<SeriesKey, SeriesConfig> = {
-  measured: { label: "Measured °C",  axis: "temp" },
-  setPoint: { label: "Set point °C", axis: "temp", strokeDasharray: "4 2" },
-  humidity: { label: "Humidity %",   axis: "pct",  strokeDasharray: "1 4" },
-  heating:  { label: "Heating %",    axis: "pct",  strokeDasharray: "6 2" },
-  outside:  { label: "Outside °C",   axis: "temp", strokeDasharray: "3 3" },
+  measured:        { label: "Measured °C",        axis: "temp" },
+  setPoint:        { label: "Set point °C",       axis: "temp", strokeDasharray: "4 2" },
+  humidity:        { label: "Humidity %",          axis: "pct",  strokeDasharray: "1 4" },
+  heating:         { label: "Heating %",           axis: "pct",  strokeDasharray: "6 2" },
+  outside:         { label: "Outside °C",          axis: "temp" },
+  outsideHumidity: { label: "Outside Humidity %",  axis: "pct",  strokeDasharray: "1 4" },
 };
 
 export const ZONE_COLOURS = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6"];
@@ -62,6 +63,8 @@ interface Props {
   from: string;
   to: string;
   zoneColours: Record<number, string>;
+  outsideTemperature?: DataPoint<TemperatureValue>[];
+  outsideHumidity?: DataPoint<number>[];
 }
 
 function atInterval<T>(intervals: DataInterval<T>[], ts: string): T | undefined {
@@ -75,20 +78,20 @@ function heatLevel(value: string | undefined): number | undefined {
 
 type ChartRow = Record<string, string | number | undefined>;
 
-/** Linearly interpolates (or flat-extrapolates) outside temperature at any timestamp. */
-function interpolateOutside(
-  knownPoints: Array<{ ms: number; celsius: number }>,
+/** Linearly interpolates (or flat-extrapolates) a numeric series at any timestamp. */
+function interpolate(
+  knownPoints: Array<{ ms: number; value: number }>,
   tsMs: number
 ): number | undefined {
   if (knownPoints.length === 0) return undefined;
-  if (knownPoints.length === 1) return knownPoints[0].celsius;
+  if (knownPoints.length === 1) return knownPoints[0].value;
   const before = [...knownPoints].reverse().find((p) => p.ms <= tsMs);
   const after  = knownPoints.find((p) => p.ms >= tsMs);
   if (before && after && before.ms !== after.ms) {
     const ratio = (tsMs - before.ms) / (after.ms - before.ms);
-    return before.celsius + ratio * (after.celsius - before.celsius);
+    return before.value + ratio * (after.value - before.value);
   }
-  return (before ?? after)!.celsius; // flat extrapolation at edges
+  return (before ?? after)!.value; // flat extrapolation at edges
 }
 
 function buildChartData(
@@ -96,7 +99,9 @@ function buildChartData(
   reports: Record<number, DayReport>,
   from: string,
   to: string,
-  multiDay: boolean
+  multiDay: boolean,
+  outsideTemperature: DataPoint<TemperatureValue>[],
+  outsideHumidity: DataPoint<number>[]
 ): ChartRow[] {
   const zonesWithData = zones.filter((z) => reports[z.id]);
   if (zonesWithData.length === 0) return [];
@@ -115,13 +120,18 @@ function buildChartData(
     };
   });
 
-  // Outside temperature: build sorted list of known points for interpolation
-  const outsidePoints = zonesWithData[0]
-    ? (reports[zonesWithData[0].id]?.weather?.outsideTemperaturePoints ?? [])
-    : [];
+  // Outside temperature: prefer high-resolution Open-Meteo data, fall back to tado day report slots
+  const outsidePoints = outsideTemperature.length > 0
+    ? outsideTemperature
+    : (reports[zonesWithData[0]?.id]?.weather?.outsideTemperaturePoints ?? []);
   const outsideKnown = outsidePoints
     .filter((dp) => dp.value?.celsius != null)
-    .map((dp) => ({ ms: parseISO(dp.timestamp).getTime(), celsius: dp.value.celsius }))
+    .map((dp) => ({ ms: parseISO(dp.timestamp).getTime(), value: dp.value.celsius }))
+    .sort((a, b) => a.ms - b.ms);
+
+  const outsideHumidityKnown = outsideHumidity
+    .filter((dp) => dp.value != null)
+    .map((dp) => ({ ms: parseISO(dp.timestamp).getTime(), value: dp.value as number }))
     .sort((a, b) => a.ms - b.ms);
 
   // Collect timestamps filtered to the [from, to] range
@@ -161,18 +171,23 @@ function buildChartData(
     }
 
     const outside = outsideKnown.length > 0
-      ? interpolateOutside(outsideKnown, parseISO(ts).getTime())
+      ? interpolate(outsideKnown, parseISO(ts).getTime())
       : undefined;
     if (outside != null) row["outside"] = Math.round(outside * 10) / 10;
+
+    const outsideHum = outsideHumidityKnown.length > 0
+      ? interpolate(outsideHumidityKnown, parseISO(ts).getTime())
+      : undefined;
+    if (outsideHum != null) row["outsideHumidity"] = Math.round(outsideHum);
 
     return row;
   });
 }
 
-export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneColours }: Props) {
+export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneColours, outsideTemperature = [], outsideHumidity = [] }: Props) {
   const zonesWithData = zones.filter((z) => reports[z.id]);
   const multiDay = from.substring(0, 10) !== to.substring(0, 10);
-  const data = buildChartData(zonesWithData, reports, from, to, multiDay);
+  const data = buildChartData(zonesWithData, reports, from, to, multiDay, outsideTemperature, outsideHumidity);
 
   // Show ~12 ticks regardless of data density
   const tickInterval = Math.max(0, Math.floor(data.length / 12) - 1);
@@ -214,15 +229,28 @@ export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneCo
               dataKey="outside"
               name="Outside °C"
               stroke="#94a3b8"
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+            />
+          )}
+          {/* Outside humidity — single line, same for the whole home */}
+          {visibleSeries.has("outsideHumidity") && data.some((row) => row["outsideHumidity"] != null) && (
+            <Line
+              yAxisId="pct"
+              type="monotone"
+              dataKey="outsideHumidity"
+              name="Outside Humidity %"
+              stroke="#94a3b8"
               strokeWidth={1.5}
-              strokeDasharray="3 3"
+              strokeDasharray="1 4"
               dot={false}
               connectNulls
             />
           )}
           {zonesWithData.flatMap((zone) =>
             (Object.entries(SERIES_CONFIG) as [SeriesKey, SeriesConfig][])
-              .filter(([key]) => visibleSeries.has(key) && key !== "outside")
+              .filter(([key]) => visibleSeries.has(key) && key !== "outside" && key !== "outsideHumidity")
               .map(([key, config]) => (
                 <Line
                   key={`${zone.id}_${key}`}
@@ -242,7 +270,10 @@ export function MultiZoneChart({ zones, reports, visibleSeries, from, to, zoneCo
       </ResponsiveContainer>
       <ChartLegend payload={[
         ...(visibleSeries.has("outside") && data.some((r) => r["outside"] != null)
-          ? [{ value: "Outside °C", color: "#94a3b8", payload: { strokeDasharray: "3 3", strokeWidth: 1.5 } }]
+          ? [{ value: "Outside °C", color: "#94a3b8", payload: { strokeWidth: 2 } }]
+          : []),
+        ...(visibleSeries.has("outsideHumidity") && data.some((r) => r["outsideHumidity"] != null)
+          ? [{ value: "Outside Humidity %", color: "#94a3b8", payload: { strokeDasharray: "1 4", strokeWidth: 1.5 } }]
           : []),
         ...zonesWithData.flatMap((zone) =>
           (Object.entries(SERIES_CONFIG) as [SeriesKey, SeriesConfig][])

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { format, eachDayOfInterval, parseISO, subHours } from "date-fns";
 import { api, mergeDayReports } from "./api";
-import type { Home, Zone, ZoneState, DayReport, WeatherReport } from "./api";
+import type { Home, Zone, ZoneState, DayReport, WeatherReport, DataPoint, TemperatureValue, OutsideWeather } from "./api";
 import { AuthPage } from "./components/AuthPage";
 import { ZoneCard } from "./components/ZoneCard";
 import type { SparkData } from "./components/ZoneCard";
@@ -24,7 +24,7 @@ function fmtCountdown(secs: number): string {
   return m > 0 ? `${m}:${s.toString().padStart(2, "0")}` : `${s}s`;
 }
 
-const ALL_SERIES: SeriesKey[] = ["measured", "humidity", "setPoint", "heating", "outside"];
+const ALL_SERIES: SeriesKey[] = ["measured", "humidity", "setPoint", "heating", "outside", "outsideHumidity"];
 
 export default function App() {
   const [authState, setAuthState] = useState<AuthState>("unknown");
@@ -38,6 +38,8 @@ export default function App() {
   const [dayReports, setDayReports] = useState<Record<number, DayReport>>({});
   const [visibleSeries, setVisibleSeries] = useState<Set<SeriesKey>>(new Set(ALL_SERIES));
   const [weather, setWeather] = useState<WeatherReport | null>(null);
+  const [outsideTemperature, setOutsideTemperature] = useState<DataPoint<TemperatureValue>[]>([]);
+  const [outsideHumidity, setOutsideHumidity] = useState<DataPoint<number>[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [stateRefreshIn, setStateRefreshIn] = useState(30);
   const [chartRefreshIn, setChartRefreshIn] = useState(15 * 60);
@@ -126,6 +128,19 @@ export default function App() {
     }, 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Fetch high-resolution outside temperature from Open-Meteo whenever date range changes
+  useEffect(() => {
+    if (selectedHome == null) return;
+    const fromDate = from.substring(0, 10);
+    const toDate   = to.substring(0, 10);
+    api.getOutsideWeather(selectedHome, fromDate, toDate)
+      .then((data: OutsideWeather) => {
+        setOutsideTemperature(data.temperature);
+        setOutsideHumidity(data.humidity);
+      })
+      .catch(() => { setOutsideTemperature([]); setOutsideHumidity([]); });
+  }, [selectedHome, from, to]);
 
   // Load day reports for all selected zones whenever selection or date range changes
   useEffect(() => {
@@ -234,8 +249,7 @@ export default function App() {
         {weather && (
           <div className="ml-auto text-sm text-gray-500 flex items-center gap-4">
             <span>Outside: {weather.outsideTemperature.celsius.toFixed(1)}°C</span>
-            <span>☀️ {weather.solarIntensity.percentage.toFixed(0)}%</span>
-            <span>{weather.weatherState.value.replace(/_/g, " ")}</span>
+            <span>💧 {weather.relativeHumidity.percentage.toFixed(0)}%</span>
             {zones.length > 0 && (
               <span className="flex items-center gap-1.5 text-xs text-gray-400 border-l pl-4">
                 <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -343,6 +357,8 @@ export default function App() {
                 from={from}
                 to={to}
                 zoneColours={zoneColourMap}
+                outsideTemperature={outsideTemperature}
+                outsideHumidity={outsideHumidity}
               />
             ) : (
               <div className="bg-white rounded-2xl shadow p-8 text-center text-gray-400">

@@ -104,7 +104,17 @@
 
     ["/weather"
      {:get {:handler (fn [req]
-                       (-> req :path-params :home-id tado/get-weather response/response))}}]]])
+                       (-> req :path-params :home-id tado/get-weather response/response))}}]
+
+    ["/outside-weather"
+     {:get {:handler (fn [req]
+                       (let [home-id   (-> req :path-params :home-id)
+                             from-date (-> req :query-params (get "from"))
+                             to-date   (-> req :query-params (get "to"))]
+                         (if (and from-date to-date)
+                           (-> (tado/get-outside-weather home-id from-date to-date)
+                               response/response)
+                           (response/bad-request {:error "from and to query parameters are required"}))))}}]]])
 
 (defn- spa-fallback
   "Serves the SPA index.html for any non-API route, enabling client-side routing."

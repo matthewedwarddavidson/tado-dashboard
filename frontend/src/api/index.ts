@@ -127,9 +127,14 @@ export function mergeDayReports(reports: DayReport[]): DayReport {
   };
 }
 
+export interface OutsideWeather {
+  temperature: DataPoint<TemperatureValue>[];
+  humidity: DataPoint<number>[];
+}
+
 export interface WeatherReport {
   outsideTemperature: { celsius: number; fahrenheit: number; timestamp: string };
-  solarIntensity: { percentage: number; timestamp: string };
+  relativeHumidity: { percentage: number; timestamp: string };
   weatherState: { value: string; timestamp: string };
 }
 
@@ -162,4 +167,9 @@ export const api = {
 
   getWeather: (homeId: number) =>
     apiFetch<WeatherReport>(`/api/homes/${homeId}/weather`),
+
+  getOutsideWeather: (homeId: number, from: string, to: string) =>
+    apiFetch<OutsideWeather>(
+      `/api/homes/${homeId}/outside-weather?from=${from}&to=${to}`
+    ),
 };
