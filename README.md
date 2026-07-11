@@ -56,3 +56,40 @@ Run `make help` to see all available targets.
 | GET | `/api/homes/:id/zones/:zone-id/day-report?date=YYYY-MM-DD` | Historical day data |
 | GET | `/api/homes/:id/weather` | Outside temperature & weather |
 | GET | `/api/homes/:id/state` | Home presence (HOME/AWAY) |
+
+## Window notifications
+
+The backend runs a background monitor that compares each room's current temperature
+against the outside temperature and sends a push notification when they cross:
+
+| Event | Notification |
+|---|---|
+| Outside exceeds inside | 🌡️ Close windows — [Room] |
+| Inside exceeds outside | 🪟 Open windows — [Room] |
+
+Notifications are delivered via **[ntfy.sh](https://ntfy.sh)** — a free push
+notification service with iOS and Android apps.
+
+### Setup
+
+1. Install the **ntfy** app on your phone
+2. Start the server — on first run it generates a private random topic and prints it:
+   ```
+   Temperature monitor enabled — subscribe to ntfy.sh topic: a3f8c2d1-...
+   ```
+   The topic is saved to `.tado-ntfy.edn` and reused on subsequent restarts.
+3. In the ntfy app tap **+** and enter the topic name shown in the log
+
+That's all — no accounts, API keys, or environment variables required.
+
+### Tuning
+
+Edit `:monitor` in `backend/resources/config.edn`:
+
+```edn
+:monitor {:enabled       true
+          :interval-secs 300   ; how often to poll (default 5 minutes)
+          :hysteresis-c  0.5}  ; dead-band to prevent flapping (default 0.5°C)
+```
+
+Set `:enabled false` to disable the monitor entirely.

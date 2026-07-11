@@ -26,5 +26,6 @@ backend/resources/public/
 # Frontend
 frontend/node_modules/
 
-# Stored OAuth refresh token
+# Stored tokens and secrets
 .tado-token.edn
+.tado-ntfy.edn

@@ -1,1 +1,8 @@
-{:server {:port #or [#env PORT 3000]}}
+{:server  {:port #or [#env PORT 3000]}
+
+ ;; Temperature crossing monitor.
+ ;; The ntfy.sh topic is auto-generated on first run and saved to .tado-ntfy.edn.
+ ;; Disable by setting :enabled false.
+ :monitor {:enabled       true
+           :interval-secs 300
+           :hysteresis-c  0.5}}
