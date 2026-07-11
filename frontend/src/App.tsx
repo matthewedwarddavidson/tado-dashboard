@@ -39,12 +39,20 @@ export default function App() {
   const [visibleSeries, setVisibleSeries] = useState<Set<SeriesKey>>(new Set(ALL_SERIES));
   const [weather, setWeather] = useState<WeatherReport | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [tabVisible, setTabVisible] = useState(!document.hidden);
   const [rateLimit, setRateLimit] = useState<RateLimit | null>(null);
   const [outsideTemperature, setOutsideTemperature] = useState<DataPoint<TemperatureValue>[]>([]);
   const [outsideHumidity, setOutsideHumidity] = useState<DataPoint<number>[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [stateRefreshIn, setStateRefreshIn] = useState(30);
   const [chartRefreshIn, setChartRefreshIn] = useState(15 * 60);
+
+  // Pause refresh automatically when the browser tab is hidden
+  useEffect(() => {
+    const handleVisibilityChange = () => setTabVisible(!document.hidden);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
 
   // Check auth status on mount
   useEffect(() => {
@@ -95,9 +103,9 @@ export default function App() {
     api.getRateLimit().then((r) => { if (r) setRateLimit(r); }).catch(() => {});
   }, [selectedHome, zones]);
 
-  // Live refresh: zone states + weather every 30 seconds (only when autoRefresh is on)
+  // Live refresh: zone states + weather every 30 seconds (only when autoRefresh is on and tab is visible)
   useEffect(() => {
-    if (selectedHome == null || zones.length === 0 || !autoRefresh) return;
+    if (selectedHome == null || zones.length === 0 || !autoRefresh || !tabVisible) return;
     setStateRefreshIn(30);
     const id = setInterval(() => {
       zones.forEach((zone) => {
@@ -110,7 +118,7 @@ export default function App() {
       setStateRefreshIn(30);
     }, 30_000);
     return () => clearInterval(id);
-  }, [selectedHome, zones, autoRefresh]);
+  }, [selectedHome, zones, autoRefresh, tabVisible]);
 
   // Live chart refresh: advance 'to' every 15 minutes if it is tracking now.
   // Advancing 'to' triggers the day-report effect to re-fetch with updated data.
