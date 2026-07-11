@@ -14,6 +14,21 @@ Better dashboards for your tado° smart thermostat data.
 The Clojure backend acts as an authenticated proxy to the tado API v2, exposing
 a clean REST API for the frontend.
 
+### Weather data
+
+Outside temperature and humidity are sourced from **[Open-Meteo](https://open-meteo.com)**
+rather than from the tado weather endpoint. tado's weather data uses a coarse
+forecast model with readings only a few times per day, which produces noticeable
+discrepancies from actual conditions. Open-Meteo provides:
+
+- **Current conditions** (banner) — polled every 30 seconds alongside tado zone data
+- **Historical data** (chart) — hourly resolution for any date range, using the
+  home's geolocation coordinates fetched from the tado API
+
+Open-Meteo is free with no account or API key required. The home's coordinates
+are read from tado's `/homes/:id` endpoint, so weather data always reflects the
+location of the thermostats rather than the user's device.
+
 ## Setup
 
 ### Option A — combined server (recommended)
@@ -54,7 +69,8 @@ Run `make help` to see all available targets.
 | GET | `/api/homes/:id/zones` | List zones (rooms) |
 | GET | `/api/homes/:id/zones/:zone-id/state` | Current temperature, humidity, heating |
 | GET | `/api/homes/:id/zones/:zone-id/day-report?date=YYYY-MM-DD` | Historical day data |
-| GET | `/api/homes/:id/weather` | Outside temperature & weather |
+| GET | `/api/homes/:id/weather` | Current outside temperature & humidity (Open-Meteo) |
+| GET | `/api/homes/:id/outside-weather?from=YYYY-MM-DD&to=YYYY-MM-DD` | Hourly historical outside temperature & humidity (Open-Meteo) |
 | GET | `/api/homes/:id/state` | Home presence (HOME/AWAY) |
 
 ## Window notifications
